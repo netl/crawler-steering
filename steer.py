@@ -2,16 +2,30 @@
 from configparser import ConfigParser
 import paho.mqtt.client as mqtt
 import pygame
+import time
 
 #configuration
 config = ConfigParser()
 with open( "steer.conf",'r') as f:
     config.read_file(f)
 
+class updater():
+    def __init__(self, m):
+        self.mqtt = m
+        self.state = {
+        }
+
+    def update(self):
+        for key, value in self.state.items():
+            self.mqtt.publish(f"{publishTopic}/{key}", value)
+
+
 #mqtt
 publishTopic = config.get( "mqtt", "publishTopic")
 c = mqtt.Client()
 c.connect( config.get( "mqtt", "host"), config.getint( "mqtt", "port"))
+
+u = updater(c)
 
 #setup window and graphics
 view = [ 800, 600]
@@ -21,6 +35,7 @@ screen = pygame.display.set_mode(view)
 
 mb = False
 run = True
+ntime = time.time()
 while run:
     for event in pygame.event.get():
 
@@ -31,16 +46,34 @@ while run:
             if event.key == pygame.K_ESCAPE:
                 run = False
             elif event.key == pygame.K_w:
-                c.publish(f"{publishTopic}/spd", 30)
+                u.state.update({
+                    "spd":30
+                    })
 
             elif event.key == pygame.K_s:
-                c.publish(f"{publishTopic}/spd", -30)
+                u.state.update({
+                    "spd":-30
+                    })
 
             elif event.key == pygame.K_a:
-                c.publish(f"{publishTopic}/dir", 30)
+                u.state.update({
+                    "dir":40
+                    })
 
             elif event.key == pygame.K_d:
-                c.publish(f"{publishTopic}/dir", -30)
+                u.state.update({
+                    "dir":-40
+                    })
+
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_d or event.key == pygame.K_a:
+                u.state.update({
+                    "dir":0
+                    })
+            elif event.key == pygame.K_w or event.key == pygame.K_s:
+                u.state.update({
+                    "spd":0
+                    })
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
                 mb = True
@@ -50,13 +83,16 @@ while run:
 
         elif event.type == pygame.MOUSEMOTION and mb:
             pos = pygame.mouse.get_pos()
-            dirs = {
+            u.state.update({
                 "yaw" : -int(255*(pos[0]/view[0]-0.5)),
                 "pitch" : -int(255*(pos[1]/view[1]-0.5))
-            }
-            for key, value in dirs.items():
-                c.publish(f"{publishTopic}/{key}", value)
-            
+            })
+
+    print(u.state)
+    if ntime < time.time():
+        u.update()
+        ntime = time.time()+0.1
+
     pygame.display.flip()
 
 #cleanup
